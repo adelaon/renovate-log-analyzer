@@ -38,8 +38,8 @@ import (
 	appstudiov1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
+	"github.com/konflux-ci/renovate-log-analyzer/internal/pkg/doctor"
 	"github.com/konflux-ci/renovate-log-analyzer/internal/pkg/kite"
-	doctor "github.com/konflux-ci/renovate-log-analyzer/internal/pkg/log-analyzer"
 )
 
 var (
@@ -136,7 +136,7 @@ func main() {
 
 	// Step 2: Process logs if step-renovate ran
 	var podDetails *doctor.PodDetails
-	if failedStep == "" || failedStep == "step-renovate" {
+	if failedStep == "" || failedStep == "step-renovate" || failedStep == "unknown" {
 		// Only process logs if renovate ran (or if we're not sure which step failed)
 		if _, err := os.Stat(logFilePath); err == nil {
 			log.Info("Processing log file", "file path", logFilePath)
@@ -187,7 +187,7 @@ func main() {
 			pipelineRunName, failureReason)
 	}
 
-	log.Info("Successfully completed log analysis and webhook sending")
+	log.Info("Successfully completed log analysis")
 }
 
 // createK8sClient creates a controller-runtime client with Tekton and Component schemes
@@ -215,32 +215,19 @@ func checkPipelineStatus(ctx context.Context, clientset *kubernetes.Clientset,
 		return "unknown", false, fmt.Sprintf("Failed to get pod: %v", err)
 	}
 
-	// Check status of each step container
-	stepOrder := []string{"step-prepare-db", "step-prepare-rpm-cert", "step-renovate"}
-
-	for _, stepName := range stepOrder {
-		for _, status := range pod.Status.ContainerStatuses {
-			if status.Name == stepName {
-				if status.State.Terminated != nil {
-					if status.State.Terminated.ExitCode != 0 {
-						// This step failed
-						return stepName, false, status.State.Terminated.Reason
-					}
-					// This step succeeded, continue checking
-					break
-				}
-				// Still running or waiting - shouldn't happen at this point
-				if status.State.Running != nil || status.State.Waiting != nil {
-					return stepName, false, "Step still running"
-				}
-			}
-		}
-	}
-
 	// Check step-renovate specifically for success
 	for _, status := range pod.Status.ContainerStatuses {
 		if status.Name == "step-renovate" {
 			if status.State.Terminated != nil {
+				// Check the actual exit code from Message field first (more reliable)
+				actualExitCode := getExitCodeFromMessage(status.State.Terminated.Message)
+				if actualExitCode != nil {
+					if *actualExitCode == 0 {
+						return "", true, ""
+					}
+					return "step-renovate", false, status.State.Terminated.Reason
+				}
+				// Fallback to Terminated.ExitCode if Message doesn't have ExitCode
 				if status.State.Terminated.ExitCode == 0 {
 					return "", true, ""
 				}
@@ -251,6 +238,37 @@ func checkPipelineStatus(ctx context.Context, clientset *kubernetes.Clientset,
 
 	// If we get here, couldn't determine status
 	return "unknown", false, "Could not determine pipeline status"
+}
+
+// getExitCodeFromMessage extracts the actual exit code from the Message field
+// The Message field contains an array of objects with "key" and "value" fields
+// We look for the one with key "ExitCode" and return its integer value
+func getExitCodeFromMessage(message string) *int32 {
+	if message == "" {
+		return nil
+	}
+
+	// Parse the JSON array from the Message field
+	var messages []map[string]interface{}
+	if err := json.Unmarshal([]byte(message), &messages); err != nil {
+		// If parsing fails, return nil (fallback to Terminated.ExitCode)
+		return nil
+	}
+
+	// Find the ExitCode entry
+	for _, msg := range messages {
+		if key, ok := msg["key"].(string); ok && key == "ExitCode" {
+			if value, ok := msg["value"].(string); ok {
+				// Parse the string value as integer
+				var exitCode int32
+				if _, err := fmt.Sscanf(value, "%d", &exitCode); err == nil {
+					return &exitCode
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // processLogFile reads and processes logs from file
@@ -292,7 +310,11 @@ func sendCustomWebhooks(ctx context.Context, kiteClient *kite.Client, namespace,
 			sentTypes += "info"
 		}
 	}
-	log.Info("Succesfully sent custom webhooks", "types", sentTypes)
+	if sentTypes != "" {
+		log.Info("Succesfully sent custom webhooks", "types", sentTypes)
+	} else {
+		log.Info("Custom webhooks were not sent", "errors", len(podDetails.Error), "warnings", len(podDetails.Warning), "infos", len(podDetails.Info))
+	}
 }
 
 func sendCustomWebhook(ctx context.Context, kiteClient *kite.Client, namespace, pipelineIdentifier, issueType string, logs []string) error {

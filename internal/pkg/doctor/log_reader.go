@@ -129,7 +129,9 @@ func parseLogLine(line string) (LogEntry, error) {
 
 			entry.Msg = msgStr
 		// keep only relevant extra fields
-		case "err", "branch", "durationMs", "depName", "branchesInformation", "errors", "context", "packageFile", "currentValue", "previousNewValue", "thisNewValue", "oldConfig", "newConfig", "migratedConfig":
+		case "err", "branch", "durationMs", "depName", "branchesInformation", "errors",
+			"context", "packageFile", "currentValue", "previousNewValue", "thisNewValue",
+			"oldConfig", "newConfig", "migratedConfig", "errorMessage":
 			entry.Extras[k] = v
 		}
 	}
