@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	corev1 "k8s.io/api/core/v1"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -80,9 +82,23 @@ func main() {
 	defer cancel()
 
 	// Initialize clients
-	cfg, _ := rest.InClusterConfig()
-	clientset, _ := kubernetes.NewForConfig(cfg)
-	k8sClient, _ := createK8sClient(cfg)
+	cfg, err := getKubernetesConfig()
+	if err != nil {
+		log.Error(err, "Failed to get Kubernetes config")
+		os.Exit(1)
+	}
+
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		log.Error(err, "Failed to create Kubernetes clientset")
+		os.Exit(1)
+	}
+
+	k8sClient, err := createK8sClient(cfg)
+	if err != nil {
+		log.Error(err, "Failed to create Kubernetes client")
+		os.Exit(1)
+	}
 
 	// Get PipelineRun info
 	pod, _ := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
@@ -123,10 +139,16 @@ func main() {
 	if failedStep == "" || failedStep == "step-renovate" {
 		// Only process logs if renovate ran (or if we're not sure which step failed)
 		if _, err := os.Stat(logFilePath); err == nil {
-			log.Info("Processing log file", logFilePath)
+			log.Info("Processing log file", "file path", logFilePath)
 			podDetails, err = processLogFile(logFilePath, failReason)
 			if err != nil {
 				log.Error(err, "Failed to process log file")
+			} else {
+				log.Info("Successfully processed log file",
+					"failureLogs", podDetails.FailureLogs,
+					"errors", podDetails.Error,
+					"warnings", podDetails.Warning,
+					"infos", podDetails.Info)
 			}
 		} else {
 			log.Error(err, "Log file not found (step-renovate may not have run)", "path", logFilePath)
@@ -146,10 +168,10 @@ func main() {
 	if err != nil {
 		log.Error(err, "Failed to get KITE API version", "stderr", os.Stderr, "apiURL", kiteAPIURL)
 	}
-	log.Info(fmt.Sprintf("Using KITE API version: %s", kiteVer))
+	log.Info(fmt.Sprintf("Using KITE API version: %s", kiteVer), "apiURL", kiteAPIURL)
 
 	// Send custom webhooks (only if we have log analysis)
-	if len(podDetails.Error) > 0 {
+	if len(podDetails.Error) > 0 || len(podDetails.Warning) > 0 || len(podDetails.Info) > 0 {
 		sendCustomWebhooks(ctx, kiteClient, componentNamespace, pipelineIdentifier, podDetails)
 	}
 
@@ -248,21 +270,29 @@ func processLogFile(logFilePath, simpleReason string) (*doctor.PodDetails, error
 
 // sendCustomWebhooks sends error, warning, and info webhooks
 func sendCustomWebhooks(ctx context.Context, kiteClient *kite.Client, namespace, pipelineIdentifier string, podDetails *doctor.PodDetails) {
+	sentTypes := ""
 	if len(podDetails.Error) > 0 {
 		if err := sendCustomWebhook(ctx, kiteClient, namespace, pipelineIdentifier, "error", podDetails.Error); err != nil {
 			log.Error(err, "Failed to send error webhook")
+		} else {
+			sentTypes += "error "
 		}
 	}
 	if len(podDetails.Warning) > 0 {
 		if err := sendCustomWebhook(ctx, kiteClient, namespace, pipelineIdentifier, "warning", podDetails.Warning); err != nil {
 			log.Error(err, "Failed to send warning webhook")
+		} else {
+			sentTypes += "warning "
 		}
 	}
 	if len(podDetails.Info) > 0 {
 		if err := sendCustomWebhook(ctx, kiteClient, namespace, pipelineIdentifier, "info", podDetails.Info); err != nil {
 			log.Error(err, "Failed to send info webhook")
+		} else {
+			sentTypes += "info"
 		}
 	}
+	log.Info("Succesfully sent custom webhooks", "types", sentTypes)
 }
 
 func sendCustomWebhook(ctx context.Context, kiteClient *kite.Client, namespace, pipelineIdentifier, issueType string, logs []string) error {
@@ -332,4 +362,32 @@ func buildFailureReason(failedStep, reason string) string {
 	default:
 		return fmt.Sprintf("Pipeline failed at %s: %s", failedStep, reason)
 	}
+}
+
+// for locl testing only
+// getKubernetesConfig gets Kubernetes config, trying in-cluster first, then kubeconfig
+func getKubernetesConfig() (*rest.Config, error) {
+	// Try in-cluster config first (when running in Kubernetes)
+	cfg, err := rest.InClusterConfig()
+	if err == nil {
+		return cfg, nil
+	}
+
+	// Fallback to kubeconfig (for local development)
+	kubeconfig := os.Getenv("KUBECONFIG")
+	if kubeconfig == "" {
+		kubeconfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
+	}
+
+	// Check if kubeconfig file exists
+	if _, err := os.Stat(kubeconfig); os.IsNotExist(err) {
+		return nil, fmt.Errorf("neither in-cluster config nor kubeconfig found: %w", err)
+	}
+
+	cfg, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build config from kubeconfig: %w", err)
+	}
+
+	return cfg, nil
 }

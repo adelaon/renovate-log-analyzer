@@ -61,21 +61,23 @@ func ProcessLogFile(logFilePath, simpleReason string) (string, *SimpleReport, er
 
 		// Attempt to parse the JSON log line
 		entry, err := parseLogLine(line)
-		if err == nil {
-			switch entry.Level {
-			case "FATAL":
-				formattedErr := buildErrorMessage(entry)
-				fatalMap[formattedErr]++
-			case "ERROR":
-				formattedErr := buildErrorMessage(entry)
-				errorsMap[formattedErr]++
-			}
+		if err != nil {
+			continue
+		}
 
-			// Check against registered selectors
-			for selector, checkFunc := range Selectors {
-				if strings.Contains(entry.Msg, selector) {
-					checkFunc(&entry, report)
-				}
+		switch entry.Level {
+		case "FATAL":
+			formattedErr := buildErrorMessage(entry)
+			fatalMap[formattedErr]++
+		case "ERROR":
+			formattedErr := buildErrorMessage(entry)
+			errorsMap[formattedErr]++
+		}
+
+		// Check against registered selectors
+		for selector, checkFunc := range Selectors {
+			if strings.Contains(entry.Msg, selector) {
+				checkFunc(&entry, report)
 			}
 		}
 	}
@@ -127,7 +129,7 @@ func parseLogLine(line string) (LogEntry, error) {
 
 			entry.Msg = msgStr
 		// keep only relevant extra fields
-		case "err", "branch", "durationMs", "depName", "branchesInformation", "errors", "context", "packageFile", "currentValue", "previousNewValue", "thisNewValue", "oldConfig", "newConfig":
+		case "err", "branch", "durationMs", "depName", "branchesInformation", "errors", "context", "packageFile", "currentValue", "previousNewValue", "thisNewValue", "oldConfig", "newConfig", "migratedConfig":
 			entry.Extras[k] = v
 		}
 	}

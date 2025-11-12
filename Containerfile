@@ -16,7 +16,7 @@ COPY cmd/ cmd/
 COPY internal/ internal/
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -a -o log-analyzer cmd/log-analyzer/main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -a -o renovate-log-analyzer cmd/log-analyzer/main.go
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 WORKDIR /

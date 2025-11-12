@@ -37,6 +37,7 @@ func init() {
 	RegisterSelector("Reached PR limit - skipping PR creation", prLimitReached)
 	RegisterSelector("Base branch does not exist - skipping", baseBranchDoesNotExist)
 	RegisterSelector("Config migration necessary", configMigrationNecessary)
+	RegisterSelector("Config needs migrating", configMigrationNecessary)
 	RegisterSelector("Found renovate config errors", renovateConfigErrors)
 	RegisterSelector("branches info extended", upgradesAwaitingSchedule)
 	RegisterSelector("PR rebase requested=true", checkForRebaseRequests)
@@ -183,9 +184,29 @@ func baseBranchDoesNotExist(line *LogEntry, report *SimpleReport) {
 
 // configMigrationNecessary checks for config migration requirements
 func configMigrationNecessary(line *LogEntry, report *SimpleReport) {
-	prettyJSONconfig, err := json.MarshalIndent(line.Extras["newConfig"].(map[string]interface{}), "", "\t")
-	if err != nil {
-		prettyJSONconfig = []byte("<unable to marshal new config>")
+	var prettyJSONconfig []byte
+
+	if line.Extras != nil {
+		// Try newConfig first, then migratedConfig
+		var configData map[string]interface{}
+
+		if newConfig, ok := line.Extras["newConfig"].(map[string]interface{}); ok && newConfig != nil {
+			configData = newConfig
+		} else if migratedConfig, ok := line.Extras["migratedConfig"].(map[string]interface{}); ok && migratedConfig != nil {
+			configData = migratedConfig
+		}
+
+		if configData != nil {
+			var err error
+			prettyJSONconfig, err = json.MarshalIndent(configData, "", "\t")
+			if err != nil {
+				prettyJSONconfig = []byte("<unable to marshal new config>")
+			}
+		} else {
+			prettyJSONconfig = []byte("<newConfig/migratedConfig not available or invalid>")
+		}
+	} else {
+		prettyJSONconfig = []byte("<newConfig/migratedConfig not available>")
 	}
 
 	report.Warning("Config migration necessary", "New config", string(prettyJSONconfig))
