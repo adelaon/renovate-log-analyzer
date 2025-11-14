@@ -12,12 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package doctor
 
-import (
-	"fmt"
-)
+// necessary info of the failed Pod
+type PodDetails struct {
+	TaskName    string
+	FailureLogs string
+}
 
-func main() {
-	fmt.Println("Hello, renovate-log-analyzer!")
+// Structured format for each log
+type LogEntry struct {
+	Level  string
+	Msg    string
+	Extras map[string]any // Additional structured data
 }
