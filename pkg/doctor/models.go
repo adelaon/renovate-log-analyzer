@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package doctor
 
-import (
-	"fmt"
-)
-
-func main() {
-	fmt.Println("Hello, renovate-log-analyzer!")
+// Structured format for each log
+type LogEntry struct {
+	Level  string
+	Msg    string
+	Extras map[string]any // Additional structured data
 }
