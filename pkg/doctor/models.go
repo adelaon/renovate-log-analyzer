@@ -20,3 +20,10 @@ type LogEntry struct {
 	Msg    string
 	Extras map[string]any // Additional structured data
 }
+
+// SimpleReport holds categorized log messages
+type SimpleReport struct {
+	Errors   []string
+	Warnings []string
+	Infos    []string
+}

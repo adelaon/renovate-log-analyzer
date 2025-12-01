@@ -1,96 +1,86 @@
-# Renovate Log Analyzer (used as part of the [MintMaker](https://github.com/konflux-ci/mintmaker) service)
+# Renovate Log Analyzer
 
-This repository contains a Go implementation for analyzing Renovate logs. The implementation provides level-based error (and fatal) extraction.
+A Go-based tool for analyzing [Renovate](https://github.com/renovatebot/renovate) logs and reporting issues to [Kite API](https://github.com/konflux-ci/kite). Part of the [MintMaker](https://github.com/konflux-ci/mintmaker) ecosystem.
 
-Another part of this repo is the Kite client, which in the event of a failure in Renovate sends the extracted errors to the [Kite API](https://github.com/konflux-ci/kite) to be displayed on an Issue dashboard in Konflux UI.
+## Overview
 
-This service is meant to run as last step of `tekton pipeline` created by the [MintMaker controller](https://github.com/konflux-ci/mintmaker).
+This tool runs as the final step of Tekton pipelines created by the [MintMaker controller](https://github.com/konflux-ci/mintmaker). It analyzes Renovate JSON logs, extracts and categorizes issues, and reports them to Kite API for display in the Konflux UI Issues dashboard.
 
-## Log analyzer
+### Key Features
 
-- **`models.go`**: Data models (`LogEntry`)
-- **`log_reader.go`**: Log processing logic for extracting logs from a `json` file and parsing them into `Go` object as well as the analyzing logic
+- **Dual Processing**: Level-based (ERROR/FATAL) and message-based pattern matching
+- **Smart Error Extraction**: Condenses verbose stack traces to essential information
+- **Categorization**: Automatically categorizes issues as Errors, Warnings, or Infos
+- **Kite Integration**: Sends webhook notifications to Kite API with analyzed results
 
-## Log Levels
+## How It Works
 
-Following [Renovate documentation](https://docs.renovatebot.com/troubleshooting/):
+1. **Log Processing**: Reads Renovate JSON logs and extracts ERROR (level 50) and FATAL (level 60) entries
+2. **Error Aggregation**: Aggregates level-based errors by message with duplicate tracking
+3. **Selector Checks**: Pattern matches log messages against predefined selectors to extract meaningful issues
+4. **Health Check**: Verifies Kite API availability before sending webhooks
+5. **Webhook Notification**: Sends `pipeline-success`, `pipeline-failure`, or `mintmaker-custom` webhooks based on findings
 
-- **TRACE**: 10
-- **DEBUG**: 20
-- **INFO**: 30
-- **WARN**: 40
-- **ERROR**: 50
-- **FATAL**: 60
-
-The log-analyzer looks for errors with level 50 (ERROR) and 60 (FATAL) and extracts the most useful information from them by looking through all the possible fields in their structure. It aggregates duplicate errors and formats them into a summary message.
-
-## Kite client
-- **`client.go`**: Contains everything needed to communicate with the [Kite API backend](https://github.com/konflux-ci/kite/tree/main/packages/backend) - defines Payload structures, initializes the client and contains functions to send requests. The client checks Kite API health status and sends webhooks for pipeline success or failure.
-
-## Local Testing
-
-### Command Line Flags
-
-- **`-dev`**: Enable development mode with more verbose logging and source location (default: false)
-
-To test the log analyzer locally using `go run ./cmd/log-analyzer/main.go` the following set up is needed:
-
-### Required Environment Variables
-
-The application requires the following environment variables:
-
-- **`NAMESPACE`**: Kubernetes namespace (required)
-- **`KITE_API_URL`**: URL to the Kite API endpoint (required)
-- **`GIT_HOST`**: Git host (e.g., github.com) (optional)
-- **`REPOSITORY`**: Repository name (optional)
-- **`BRANCH`**: Branch name (optional)
-- **`LOG_FILE`**: Path to the Renovate log file (optional, defaults to `/workspace/shared-data/renovate-logs.json`)
-- **`PIPELINE_RUN`**: Pipeline run identifier (optional, defaults to "unknown")
-
-### Test Log File Format
-
-The log file should contain Renovate JSON logs, with each line being a separate JSON object. Example:
-
-```json
-{"level": 20, "msg": "rawExec err", "err": {"message": "Command failed: npm install"}, "branch": "main"}
-{"level": 40, "msg": "Reached PR limit - skipping PR creation"}
-{"level": 30, "msg": "branches info extended", "branchesInformation": [...]}
-{"level": 50, "msg": "Base branch does not exist - skipping", "baseBranch": "feature/old"}
-{"level": 60, "msg": "Fatal error occurred", "err": {"message": "Critical failure"}}
-```
-
-### Example Test Command
+## Quick Start
 
 ```bash
 # Set required environment variables
-export NAMESPACE=namespace-name
-export KITE_API_URL=https://kite-api.example.com            # or placeholder for testing
+export NAMESPACE=your-namespace
+export KITE_API_URL=https://kite-api.example.com
 export GIT_HOST=github.com
 export REPOSITORY=owner/repo
 export BRANCH=main
-export LOG_FILE="./pkg/doctor/testdata/fatal_exit_logs.json" # path to test log file
-export PIPELINE_RUN=test-run-123                            # optional
+export LOG_FILE="./pkg/doctor/testdata/test_logs.json"
 
-# Run the application
-go run ./cmd/log-analyzer/main.go
+# Run the analyzer
+go run ./cmd/log-analyzer/main.go --dev
 ```
 
-### How It Works
+## Documentation
 
-1. **Log Processing**: The application reads the log file and extracts ERROR (level 50) and FATAL (level 60) entries.
+For detailed documentation, see [docs/README.md](docs/README.md), which includes:
 
-2. **Error Aggregation**: Errors are aggregated by message, with duplicate counts tracked.
+- Architecture and implementation details
+- Complete selector list with examples
+- `extractUsefulError` function documentation
+- Local testing guide
+- Kite client documentation
 
-3. **Kite API Health Check**: Before sending webhooks, the application checks the Kite API health status.
+## Environment Variables
 
-4. **Webhook Notification**:
-   - If no errors are found, sends a `pipeline-success` webhook
-   - If errors are found, sends a `pipeline-failure` webhook with the aggregated failure reason
+### Required
+- **`NAMESPACE`**: Kubernetes namespace
+- **`KITE_API_URL`**: URL to the Kite API endpoint
 
-5. **Pipeline Identifier**: The pipeline identifier is constructed as `{GIT_HOST}/{REPOSITORY}@{BRANCH}`.
+### Optional
+- **`GIT_HOST`**: Git host (default: "unknown")
+- **`REPOSITORY`**: Repository name (default: "unknown")
+- **`BRANCH`**: Branch name (default: "unknown")
+- **`LOG_FILE`**: Path to log file (default: `/workspace/shared-data/renovate-logs.json`)
+- **`PIPELINE_RUN`**: Pipeline run identifier (default: "unknown")
 
-### Notes
+### Flags
+- **`--dev`**: Enable development mode with debug logging and source locations
 
-- **Kite API URL**: For testing log parsing only, the Kite API URL does not need to be a working endpoint. The service will parse the JSON logs from the file and display results via logs, but webhook sending will fail if the API is not accessible.
-- **Log file location**: Ensure the log file path is correct and the file is readable. If `LOG_FILE` is not set, it defaults to `/workspace/shared-data/renovate-logs.json`.
-- **Error handling**: The application exits with code 1 if any step fails (missing environment variables, log processing errors, API failures, etc.)
+## Project Structure
+
+```
+renovate-log-analyzer/
+├── cmd/
+│   └── log-analyzer/
+│       └── main.go          # Entry point
+├── pkg/
+│   ├── doctor/              # Log analysis package
+│   │   ├── checks.go        # Selector definitions
+│   │   ├── models.go        # Data models
+│   │   ├── report.go        # Report generation
+│   │   └── log_reader.go    # Log processing
+│   └── kite/                # Kite API client
+│       └── client.go
+└── docs/
+    └── README.md            # Detailed documentation
+```
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [licenses/LICENSE](licenses/LICENSE) for details.

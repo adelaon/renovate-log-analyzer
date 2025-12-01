@@ -27,7 +27,7 @@ COPY --from=builder /opt/app-root/src/renovate-log-analyzer .
 
 # Labels
 LABEL name="Renovate Log Analyzer"
-LABEL description="Log analysis and webhook service for Mintmaker-Renovate"
+LABEL description="Log analysis and webhook tool for Mintmaker-Renovate"
 LABEL io.k8s.description="Renovate Log Analyzer"
 LABEL io.k8s.display-name="renovate-log-analyzer"
 LABEL summary="Renovate Log Analyzer"

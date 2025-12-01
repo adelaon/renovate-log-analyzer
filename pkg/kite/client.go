@@ -49,6 +49,13 @@ type PipelineSuccessPayload struct {
 	Namespace    string `json:"namespace"`
 }
 
+type CustomPayload struct {
+	PipelineId string   `json:"pipelineId"`
+	Namespace  string   `json:"namespace"`
+	Type       string   `json:"type"`
+	Logs       []string `json:"logs"`
+}
+
 // NewClient creates a new Kite API client
 func NewClient(baseURL string) (*Client, error) {
 	if baseURL == "" {
