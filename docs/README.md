@@ -25,7 +25,7 @@ This document provides comprehensive documentation for the Renovate Log Analyzer
 
 ## Overview
 
-This tool analyzes Renovate logs and sends categorized results to [Kite API](https://github.com/konflux-ci/kite) for display in the Konflux UI Issues dashboard. It runs as the last step of `tekton pipeline` created by the [MintMaker controller](https://github.com/konflux-ci/mintmaker).
+This tool analyzes Renovate logs and sends categorized results to [Kite API](https://github.com/Issues-Dashboard/kite) for display in the Konflux UI Issues dashboard. It runs as the last step of `tekton pipeline` created by the [MintMaker controller](https://github.com/konflux-ci/mintmaker).
 
 ## Log Analyzer Components
 

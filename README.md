@@ -1,6 +1,6 @@
 # Renovate Log Analyzer
 
-A Go-based tool for analyzing [Renovate](https://github.com/renovatebot/renovate) logs and reporting issues to [Kite API](https://github.com/konflux-ci/kite). Part of the [MintMaker](https://github.com/konflux-ci/mintmaker) ecosystem.
+A Go-based tool for analyzing [Renovate](https://github.com/renovatebot/renovate) logs and reporting issues to [Kite API](https://github.com/Issues-Dashboard/kite). Part of the [MintMaker](https://github.com/konflux-ci/mintmaker) ecosystem.
 
 ## Overview
 
