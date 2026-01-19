@@ -1,9 +1,8 @@
 # Build stage
-FROM registry.access.redhat.com/ubi9/go-toolset:latest AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
-ENV GOTOOLCHAIN=auto
 
 # Copy the Go Modules manifests
 COPY go.mod go.mod
