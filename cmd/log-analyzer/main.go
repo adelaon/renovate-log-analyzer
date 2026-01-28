@@ -58,6 +58,7 @@ func run() error {
 
 	// Get the necessary environment variables
 	kiteAPIURL := getEnvOrDefault("KITE_API_URL", "")
+	authTokenPath := getEnvOrDefault("KITE_AUTH_TOKEN_FILE", "")
 	namespace := getEnvOrDefault("NAMESPACE", "")
 
 	logFilePath := getEnvOrDefault("LOG_FILE", defaultLogFilePath)
@@ -73,10 +74,16 @@ func run() error {
 		"branch", branch,
 	)
 
-	if namespace == "" || kiteAPIURL == "" {
-		return fmt.Errorf("missing required environment variables: NAMESPACE and KITE_API_URL must be set")
+	if namespace == "" || kiteAPIURL == "" || authTokenPath == "" {
+		return fmt.Errorf("missing required environment variables: NAMESPACE, KITE_API_URL and KITE_AUTH_TOKEN_FILE must be set")
 	}
 	logger = logger.With("namespace", namespace)
+
+	tokenBytes, err := os.ReadFile(authTokenPath)
+	if err != nil {
+		return fmt.Errorf("failed to read token from %s: %w", authTokenPath, err)
+	}
+	authToken := strings.TrimSpace(string(tokenBytes))
 
 	// Now use the logger throughout your code
 	logger.Info("Starting log analyzer tool")
@@ -109,7 +116,7 @@ func run() error {
 	}
 
 	// Create Kite client
-	kiteClient, err := kite.NewClient(kiteAPIURL)
+	kiteClient, err := kite.NewClient(kiteAPIURL, authToken)
 	if err != nil {
 		return fmt.Errorf("failed to create Kite client for %s: %w", kiteAPIURL, err)
 	}

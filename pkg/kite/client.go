@@ -28,6 +28,7 @@ import (
 
 type Client struct {
 	baseURL    string
+	token      string
 	httpClient *http.Client
 }
 
@@ -57,7 +58,7 @@ type CustomPayload struct {
 }
 
 // NewClient creates a new Kite API client
-func NewClient(baseURL string) (*Client, error) {
+func NewClient(baseURL, token string) (*Client, error) {
 	if baseURL == "" {
 		return nil, fmt.Errorf("Kite API base URL cannot be empty")
 	}
@@ -69,6 +70,7 @@ func NewClient(baseURL string) (*Client, error) {
 
 	return &Client{
 		baseURL: baseURL,
+		token:   token,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -78,7 +80,12 @@ func NewClient(baseURL string) (*Client, error) {
 // sendRequest sends the given request to Kite API and stores
 // the decoded response body in the value pointed to by out
 func (c *Client) sendRequest(req *http.Request, out any) error {
+	if c.token == "" {
+		return fmt.Errorf("Kite API authentication token is not set")
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
